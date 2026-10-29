@@ -14,14 +14,19 @@
 - Check: Flutter analysis and widget tests passed; Python store and agent tests passed; authenticated local backend-agent smoke run passed, including unsupported requests, progress, evidence retrieval, and Stop.
 - Limitation: note evidence is a generated file preview, not a desktop screenshot. This bearer-token HTTP demo is trusted-LAN-only; Phase 3 must secure pairing and transport.
 
-## Phase 3 — Reliable personal agent (next)
+## Phase 3 — Phone-operated basic agent (in progress)
 
-- Document and enforce action/folder allowlists, request validation, timeouts, retries for recoverable errors, and actionable failures.
-- Add private device pairing/reconnection and explicit approval for consequential operations.
-- Let the user inspect captured evidence and task event history.
+- Current working task set: research public webpages, create a note, list notes, and find text in notes through the phone app; note access stays in the approved Orbit folder.
+- Harden task validation, safe-folder path checks, timeouts, reconnect behavior, retry rules, duplicate handling, and clear failures.
+- Add private phone pairing and encrypted transport before calling the connection production-ready.
+- Make task outcomes and generated evidence easy to inspect from Activity.
 
-## Phase 4 — Broader capabilities
+## Phase 4 — Broader capabilities (after reliability)
 
-- Add task types incrementally with visible plans and only supported steps.
+- Add a small number of useful personal workflows, each with visible steps and a specific allowlist.
 - Add durable configurable permissions and private evidence storage.
-- Consider further OS controls only after the earlier permission model is reliable. Unrestricted control is outside the initial release.
+- Add OS controls only after the permission model is reliable. Unrestricted control is outside the initial release.
+
+## One-month presentation target
+
+Target a dependable personal beta for public web research and the agreed note workflows, not unrestricted control of the PC. A reasonable sequence is: Week 1, stabilize and rehearse phone-to-PC web and note workflows; Week 2, secure pairing and connection recovery; Week 3, add one carefully chosen workflow with explicit approval; Week 4, regression checks, setup guide, demo rehearsal, and fallback recording. The timeline depends on available work hours and hardware/network issues; do not describe planned work as already complete.

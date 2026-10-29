@@ -22,18 +22,19 @@ class FakeOrbitApi implements OrbitApiService {
   @override
   Future<Map<String, dynamic>> submit(String request) async {
     lastRequest = request;
+    final isResearch = request.startsWith('Research:');
     final now = DateTime.now().toUtc().toIso8601String();
     final task = <String, dynamic>{
       'id': 'remote-1',
-      'title': 'Create note · Phone demo',
+      'title': isResearch ? 'Research · solar energy' : 'Create note · Phone demo',
       'request': request,
-      'status': 'queued',
-      'step': 'Waiting for the Windows agent',
-      'progress': 0.0,
+      'status': isResearch ? 'completed' : 'queued',
+      'step': isResearch ? 'Found relevant public webpages' : 'Waiting for the Windows agent',
+      'progress': isResearch ? 1.0 : 0.0,
       'created_at': now,
       'updated_at': now,
       'error': null,
-      'result': null,
+      'result': isResearch ? 'Web results for: solar energy\n\n1. Official source\nhttps://example.gov/solar\nA short source preview.' : null,
       'events': [],
       'evidence': [],
     };
@@ -88,6 +89,19 @@ void main() {
     await tester.tap(find.text('Activity').last);
     await tester.pumpAndSettle();
     expect(find.text('Create note · Phone demo'), findsOneWidget);
+
+    await tester.tap(find.text('Agent').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byType(TextField), 240, scrollable: find.byType(Scrollable).first);
+    await tester.enterText(find.byType(TextField), 'Research: solar energy');
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pumpAndSettle();
+    expect(fake.lastRequest, 'Research: solar energy');
+    await tester.tap(find.text('Activity').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Research · solar energy'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('source-link-https://example.gov/solar')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     expect(fake.closed, isTrue);
   });

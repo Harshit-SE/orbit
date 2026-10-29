@@ -17,3 +17,17 @@ def note_path(task_id: str) -> Path:
     if path.parent != DEMO_FOLDER or path.suffix.lower() != ".md":
         raise PermissionError("Resolved note path escaped the approved demo folder")
     return path
+
+
+def safe_note_files(limit: int = 100) -> list[Path]:
+    """Return only Orbit-created Markdown notes whose resolved paths stay in scope."""
+    DEMO_FOLDER.mkdir(parents=True, exist_ok=True)
+    notes: list[Path] = []
+    for candidate in DEMO_FOLDER.glob("note-*.md"):
+        try:
+            resolved = candidate.resolve(strict=True)
+            if resolved.parent == DEMO_FOLDER and resolved.is_file():
+                notes.append(resolved)
+        except (OSError, RuntimeError):
+            continue
+    return sorted(notes, key=lambda path: path.stat().st_mtime, reverse=True)[:limit]

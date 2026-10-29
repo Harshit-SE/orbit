@@ -87,13 +87,24 @@ def _authorize(header: str | None, name: str) -> None:
 
 def _task_title(request: str) -> tuple[str, str] | None:
     match = re.match(r"(?is)^\s*create\s+note\s*:\s*(.+?)\s*$", request)
-    if not match:
-        return None
-    content = match.group(1).strip()
-    if not content:
-        return None
-    first_line = content.splitlines()[0].strip()
-    return (f"Create note · {first_line[:55] or 'Untitled'}", content)
+    if match:
+        content = match.group(1).strip()
+        if content:
+            first_line = content.splitlines()[0].strip()
+            return (f"Create note · {first_line[:55] or 'Untitled'}", content)
+    if re.fullmatch(r"\s*list\s+notes\s*", request, re.IGNORECASE):
+        return "List Orbit notes", ""
+    find_match = re.fullmatch(r"\s*find\s+note\s*:\s*(.{1,100}?)\s*", request, re.IGNORECASE | re.DOTALL)
+    if find_match:
+        query = find_match.group(1).strip()
+        if query:
+            return f"Find in Orbit notes · {query[:55]}", query
+    research_match = re.fullmatch(r"\s*research\s*:\s*(.{3,500}?)\s*", request, re.IGNORECASE | re.DOTALL)
+    if research_match:
+        query = research_match.group(1).strip()
+        if query:
+            return f"Research · {query[:55]}", query
+    return None
 
 
 @app.get("/health")
@@ -114,8 +125,8 @@ async def submit_task(body: SubmitTask, authorization: str | None = Header(defau
     if parsed is None:
         task = store.create(
             title=body.request[:80], request=body.request, status="failed",
-            step="Unsupported request. Try: Create note: text for your note.",
-            error="Only Create note: <text> is supported in this demo.",
+            step="Unsupported request. Try Research: question, Create note: text, List notes, or Find note: text.",
+            error="Supported actions: Research: <question>, Create note: <text>, List notes, and Find note: <text>.",
         )
         await hub.publish(task)
         return task
@@ -214,7 +225,7 @@ async def agent_socket(websocket: WebSocket) -> None:
                     if len(content) <= 2_000_000 and evidence_message.get("mime_type") == "image/png" and content:
                         store.add_evidence(task_id, "image/png", "note_preview", content)
                 updated = store.update(
-                    task_id, status="completed", step="Created note in Orbit demo folder",
+                    task_id, status="completed", step=str(message.get("step", "Task completed"))[:240],
                     progress=1, result=str(message.get("result", ""))[:1000], event_kind="completed",
                 )
             elif kind == "failed":

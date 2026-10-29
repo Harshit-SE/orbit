@@ -1,6 +1,6 @@
 # Orbit Windows agent
 
-Phase 2 agent. It connects outbound to the authenticated Orbit backend, accepts only `Create note: <text>`, writes Markdown only in its configured demo folder, and returns a generated note-preview image. It does not run shell commands, control the desktop, browse websites, delete files, or send messages.
+It connects outbound to the authenticated Orbit backend and accepts four bounded actions: `Research: <question>`, `Create note: <text>`, `List notes`, and `Find note: <text>`. Research returns up to three public web-result summaries with HTTPS links; the phone user chooses whether to open them. Note reads and writes stay in the configured demo folder, and creating a note returns a generated note preview. The agent does not run shell commands, control the desktop, delete files, or send messages.
 
 ## Run on Windows
 

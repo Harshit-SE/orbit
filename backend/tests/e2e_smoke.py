@@ -63,6 +63,21 @@ def main() -> None:
     status, _, image = call(completed["evidence"][0]["url"])
     assert status == 200 and image.startswith(b"\x89PNG\r\n\x1a\n"), "note-preview evidence is not a PNG"
 
+    status, listed, _ = call("/v1/tasks", "POST", {"request": "List notes"})
+    assert status == 200 and listed["status"] == "queued", listed
+    listed = wait_for(listed["id"], "completed")
+    assert "Orbit end-to-end smoke test" in listed["result"], listed
+
+    status, found, _ = call("/v1/tasks", "POST", {"request": "Find note: end-to-end smoke"})
+    assert status == 200 and found["status"] == "queued", found
+    found = wait_for(found["id"], "completed")
+    assert "note-" in found["result"] and "end-to-end smoke" in found["result"], found
+
+    status, research, _ = call("/v1/tasks", "POST", {"request": "Research: NASA solar eclipse official information"})
+    assert status == 200 and research["status"] == "queued", research
+    research = wait_for(research["id"], "completed", timeout=30)
+    assert "Web results for:" in research["result"] and "https://" in research["result"], research
+
     status, pending, _ = call("/v1/tasks", "POST", {"request": "Create note: This note should be stopped"})
     assert status == 200, pending
     status, stopped, _ = call(f"/v1/tasks/{pending['id']}/stop", "POST")
@@ -70,7 +85,7 @@ def main() -> None:
     stopped = wait_for(pending["id"], "stopped")
     note_file = Path(__file__).resolve().parents[2] / "agent" / "demo_folder" / f"note-{pending['id']}.md"
     assert not note_file.exists(), f"A stopped task wrote a file: {note_file}"
-    print("E2E passed: auth, unsupported task, note creation, progress/completion, evidence, and Stop.")
+    print("E2E passed: auth, unsupported task, create/list/find notes, public web research, progress/completion, evidence, and Stop.")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:orbit_mobile/core/networking/orbit_api.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(const OrbitApp());
 
@@ -268,15 +269,21 @@ class _OrbitHomeState extends State<OrbitHome> {
       const SizedBox(height: 8),
       _panel(
         const Text(
-          'Orbit  ·  I’m comparing trusted sources and will bring back a short summary.',
+          'Orbit  ·  I’ll search the public web and send you useful pages with source links.',
           style: TextStyle(height: 1.5),
         ),
       ),
       const SizedBox(height: 14),
       Wrap(
         spacing: 7,
-        children: ['Research web', 'Summarize files', 'Create note']
-            .map((s) => ActionChip(label: Text(s), onPressed: () => _submit(s == 'Create note' ? 'Create note: A note created from Orbit mobile.' : s)))
+        children: ['Research web', 'Create note', 'List notes', 'Find note']
+            .map((s) => ActionChip(
+              label: Text(s),
+              onPressed: () => _submit(s == 'Create note'
+                  ? 'Create note: A note created from Orbit mobile.'
+                  : s == 'List notes' ? 'List notes'
+                  : s == 'Find note' ? 'Find note: Orbit' : 'Research: latest Flutter mobile app development news'),
+            ))
             .toList(),
       ),
       ],
@@ -289,7 +296,7 @@ class _OrbitHomeState extends State<OrbitHome> {
               minLines: 1,
               maxLines: 4,
               decoration: const InputDecoration(
-                hintText: 'Ask Orbit to do something…',
+                hintText: 'Research: … · Create note: … · List notes · Find note: …',
                 border: InputBorder.none,
               ),
             ),
@@ -408,6 +415,7 @@ class _OrbitHomeState extends State<OrbitHome> {
     return {
       'id': raw['id']?.toString() ?? '',
       'title': raw['title']?.toString() ?? 'Orbit task',
+      'request': raw['request']?.toString() ?? '',
       'status': status,
       'step': raw['error']?.toString().isNotEmpty == true ? raw['error'].toString() : raw['step']?.toString() ?? '',
       'date': rawDate == null ? 'Recently' : rawDate.toLocal().toString().substring(0, 16),
@@ -589,7 +597,7 @@ class _OrbitHomeState extends State<OrbitHome> {
             Text('Supported actions'),
             SizedBox(height: 4),
             Text(
-              'Web research · read files · create notes',
+              'Research the web and manage notes in Orbit’s approved folder',
               style: TextStyle(color: muted, fontSize: 12),
             ),
             Divider(),
@@ -705,7 +713,10 @@ class _OrbitHomeState extends State<OrbitHome> {
                 Text('• ${task['step']}'),
               ],
               if (task['result']?.isNotEmpty == true)
-                Padding(padding: const EdgeInsets.only(top: 8), child: Text('Result · ${task['result']}', style: const TextStyle(color: mint, fontSize: 12))),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _taskResult(task['result']!, task['request']?.startsWith('Research:') == true),
+                ),
               if (task['evidence'] == 'true') ...[
                 const SizedBox(height: 16),
                 const Text('EVIDENCE', style: TextStyle(color: muted, fontSize: 11, letterSpacing: 1)),
@@ -740,6 +751,38 @@ class _OrbitHomeState extends State<OrbitHome> {
       ),
     );
   }
+
+  Widget _taskResult(String result, bool linkResults) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('RESULT', style: TextStyle(color: mint, fontSize: 11, letterSpacing: 1)),
+      const SizedBox(height: 6),
+      ...result.split('\n').map((line) {
+        final text = line.trim();
+        final uri = Uri.tryParse(text);
+        if (linkResults && uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
+          return TextButton.icon(
+            key: ValueKey('source-link-$text'),
+            onPressed: () async {
+              final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+              if (!opened && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Could not open this source link')),
+                );
+              }
+            },
+            icon: const Icon(Icons.open_in_new, size: 15),
+            label: Text(uri.host, maxLines: 1, overflow: TextOverflow.ellipsis),
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(line, style: const TextStyle(color: mint, fontSize: 12)),
+        );
+      }),
+    ],
+  );
 
   Widget _task(Map<String, String> task) => _panel(
     Material(
