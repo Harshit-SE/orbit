@@ -1,0 +1,17 @@
+.dart_tool/
+.flutter-plugins*
+.packages
+build/
+.idea/
+.vscode/
+*.iml
+*.log
+backend/.env
+backend/.venv/
+backend/storage/*
+!backend/storage/.gitkeep
+agent/.env
+agent/.venv/
+/mobile/evidence/
+/mobile/recordings/
+/agent/evidence/
