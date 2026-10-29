@@ -1,4 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:orbit_mobile/core/networking/orbit_api.dart';
 
 void main() => runApp(const OrbitApp());
 
@@ -11,7 +16,8 @@ const warning = Color(0xFFF2C66D);
 const danger = Color(0xFFFF7F87);
 
 class OrbitApp extends StatelessWidget {
-  const OrbitApp({super.key});
+  const OrbitApp({super.key, this.apiFactory});
+  final OrbitApiService Function(String, String)? apiFactory;
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Orbit',
@@ -26,12 +32,13 @@ class OrbitApp extends StatelessWidget {
       ),
       useMaterial3: true,
     ),
-    home: const OrbitHome(),
+    home: OrbitHome(apiFactory: apiFactory),
   );
 }
 
 class OrbitHome extends StatefulWidget {
-  const OrbitHome({super.key});
+  const OrbitHome({super.key, this.apiFactory});
+  final OrbitApiService Function(String, String)? apiFactory;
   @override
   State<OrbitHome> createState() => _OrbitHomeState();
 }
@@ -44,6 +51,15 @@ class _OrbitHomeState extends State<OrbitHome> {
   bool showEmpty = false;
   bool notifications = true;
   String activityFilter = 'All';
+  bool apiConnected = false;
+  bool agentOnline = false;
+  bool refreshInFlight = false;
+  String? connectionError;
+  OrbitApiService? api;
+  Timer? pollTimer;
+  final backendController = TextEditingController(text: 'http://127.0.0.1:8765');
+  final tokenController = TextEditingController();
+  List<Map<String, String>> remoteTasks = [];
   final input = TextEditingController();
   final tasks = <Map<String, String>>[
     {
@@ -76,9 +92,18 @@ class _OrbitHomeState extends State<OrbitHome> {
   ];
   @override
   void dispose() {
+    pollTimer?.cancel();
+    api?.close();
     input.dispose();
+    backendController.dispose();
+    tokenController.dispose();
     super.dispose();
   }
+
+  List<Map<String, String>> get visibleTasks => apiConnected ? remoteTasks : tasks;
+  String get connectionLabel => apiConnected
+      ? (agentOnline ? 'PC online' : 'Agent offline')
+      : (online ? 'Demo mode' : 'PC offline');
 
   @override
   Widget build(BuildContext context) {
@@ -99,9 +124,9 @@ class _OrbitHomeState extends State<OrbitHome> {
                   ),
                   const Spacer(),
                   Text(
-                    online ? '● PC online' : '● PC offline',
+                    connectionLabel,
                     style: TextStyle(
-                      color: online ? mint : warning,
+                      color: apiConnected ? (agentOnline ? mint : warning) : violet,
                       fontSize: 12,
                     ),
                   ),
@@ -149,22 +174,24 @@ class _OrbitHomeState extends State<OrbitHome> {
         Row(
           children: [
             Icon(
-              online ? Icons.shield_outlined : Icons.wifi_off,
-              color: online ? mint : warning,
+              (apiConnected ? agentOnline : online) ? Icons.shield_outlined : Icons.wifi_off,
+              color: (apiConnected ? agentOnline : online) ? mint : warning,
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                online
-                    ? 'Your PC is ready · approved permissions only'
-                    : 'PC offline · reconnect in Settings',
+                !apiConnected
+                    ? (online ? 'Demo data only · connect to your PC in Settings' : 'PC offline · connect in Settings')
+                    : agentOnline
+                        ? 'Your PC is ready · allowlisted actions only'
+                        : 'Backend connected · Windows agent is offline',
                 style: const TextStyle(fontSize: 12),
               ),
             ),
-            if (!online)
+            if (!apiConnected)
               TextButton(
-                onPressed: () => setState(() => online = true),
-                child: const Text('Reconnect'),
+                onPressed: () => setState(() => tab = 3),
+                child: const Text('Connect'),
               ),
           ],
         ),
@@ -172,7 +199,7 @@ class _OrbitHomeState extends State<OrbitHome> {
       if (showLoading)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 8),
-          child: LinearProgressIndicator(color: violet),
+          child: LinearProgressIndicator(key: ValueKey('demo-loading-indicator'), color: violet),
         ),
       if (showError)
         _panel(
@@ -184,6 +211,8 @@ class _OrbitHomeState extends State<OrbitHome> {
             ],
           ),
         ),
+      if (connectionError != null)
+        _panel(Text(connectionError!, style: const TextStyle(color: danger, fontSize: 12))),
       const SizedBox(height: 18),
       if (showEmpty)
         _panel(
@@ -203,7 +232,7 @@ class _OrbitHomeState extends State<OrbitHome> {
         style: TextStyle(color: muted, fontSize: 11, letterSpacing: 1),
       ),
       const SizedBox(height: 8),
-      ...tasks.where((task) => task['status'] == 'Running' || task['status'] == 'Queued').map((task) => Column(
+      ...visibleTasks.where((task) => task['status'] == 'Running' || task['status'] == 'Queued').map((task) => Column(
         children: [
           _task(task),
           Align(
@@ -217,7 +246,7 @@ class _OrbitHomeState extends State<OrbitHome> {
           ),
         ],
       )),
-      ...tasks.where((task) => task['status'] == 'Needs review').expand((task) => [
+      ...visibleTasks.where((task) => task['status'] == 'Needs review').expand((task) => [
         _task(task),
         Row(children: [
           Expanded(child: OutlinedButton(onPressed: () => _decideApproval(task, false), child: const Text('Decline'))),
@@ -247,7 +276,7 @@ class _OrbitHomeState extends State<OrbitHome> {
       Wrap(
         spacing: 7,
         children: ['Research web', 'Summarize files', 'Create note']
-            .map((s) => ActionChip(label: Text(s), onPressed: () => _submit(s)))
+            .map((s) => ActionChip(label: Text(s), onPressed: () => _submit(s == 'Create note' ? 'Create note: A note created from Orbit mobile.' : s)))
             .toList(),
       ),
       ],
@@ -284,8 +313,25 @@ class _OrbitHomeState extends State<OrbitHome> {
     ],
   );
 
-  void _submit(String title) {
+  Future<void> _submit(String title) async {
     if (title.trim().isEmpty) return;
+    if (apiConnected && api != null) {
+      try {
+        final result = await api!.submit(title);
+        await _refreshRemote();
+        if (mounted) {
+          input.clear();
+          final status = result['status']?.toString();
+          final message = status == 'failed'
+              ? result['error']?.toString() ?? result['step']?.toString() ?? 'Unsupported task'
+              : 'Task sent to your PC';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        }
+      } catch (error) {
+        if (mounted) setState(() => connectionError = error.toString());
+      }
+      return;
+    }
     setState(() {
       showEmpty = false;
       tasks.insert(0, {
@@ -301,6 +347,78 @@ class _OrbitHomeState extends State<OrbitHome> {
     );
   }
 
+  Future<void> _connectBackend() async {
+    OrbitApiService? candidate;
+    try {
+      candidate = widget.apiFactory?.call(backendController.text, tokenController.text.trim())
+          ?? OrbitApi(backendController.text, tokenController.text.trim());
+      final health = await candidate.health();
+      final loaded = await candidate.tasks();
+      if (!mounted) { candidate.close(); return; }
+      pollTimer?.cancel();
+      api?.close();
+      setState(() {
+        api = candidate;
+        apiConnected = true;
+        agentOnline = health['agent_online'] == true;
+        remoteTasks = loaded.map(_toTaskMap).toList();
+        connectionError = null;
+      });
+      pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _refreshRemote());
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connected to the Orbit backend')));
+    } catch (error) {
+      candidate?.close();
+      if (mounted) setState(() { apiConnected = false; agentOnline = false; connectionError = error.toString(); });
+    }
+  }
+
+  Future<void> _refreshRemote() async {
+    final client = api;
+    if (!apiConnected || client == null || refreshInFlight) return;
+    refreshInFlight = true;
+    try {
+      final values = await Future.wait([client.health(), client.tasks()]);
+      if (!mounted || api != client) return;
+      setState(() {
+        agentOnline = (values[0] as Map<String, dynamic>)['agent_online'] == true;
+        remoteTasks = (values[1] as List<Map<String, dynamic>>).map(_toTaskMap).toList();
+        connectionError = null;
+      });
+    } catch (error) {
+      if (mounted && api == client) setState(() => connectionError = error.toString());
+    } finally {
+      refreshInFlight = false;
+    }
+  }
+
+  Map<String, String> _toTaskMap(Map<String, dynamic> raw) {
+    final evidence = raw['evidence'] is List && (raw['evidence'] as List).isNotEmpty
+        ? (raw['evidence'] as List).first as Map<String, dynamic>
+        : null;
+    final rawDate = DateTime.tryParse(raw['created_at']?.toString() ?? '');
+    final status = switch (raw['status']) {
+      'queued' => 'Queued',
+      'running' => 'Running',
+      'waiting_approval' => 'Needs review',
+      'completed' => 'Completed',
+      'failed' => 'Failed',
+      'stopped' => 'Stopped',
+      _ => 'Failed',
+    };
+    return {
+      'id': raw['id']?.toString() ?? '',
+      'title': raw['title']?.toString() ?? 'Orbit task',
+      'status': status,
+      'step': raw['error']?.toString().isNotEmpty == true ? raw['error'].toString() : raw['step']?.toString() ?? '',
+      'date': rawDate == null ? 'Recently' : rawDate.toLocal().toString().substring(0, 16),
+      'progress': raw['progress']?.toString() ?? '0',
+      'result': raw['result']?.toString() ?? '',
+      'evidence': evidence == null ? 'false' : 'true',
+      'evidenceId': evidence?['id']?.toString() ?? '',
+      'raw': jsonEncode(raw),
+    };
+  }
+
   void _decideApproval(Map<String, String> task, bool approved) {
     setState(() {
       task['status'] = approved ? 'Running' : 'Stopped';
@@ -308,7 +426,16 @@ class _OrbitHomeState extends State<OrbitHome> {
     });
   }
 
-  void _stopTask(Map<String, String> task) {
+  Future<void> _stopTask(Map<String, String> task) async {
+    if (apiConnected && api != null && task['id']?.isNotEmpty == true) {
+      try {
+        await api!.stop(task['id']!);
+        await _refreshRemote();
+      } catch (error) {
+        if (mounted) setState(() => connectionError = error.toString());
+      }
+      return;
+    }
     setState(() {
       task['status'] = 'Stopped';
       task['step'] = 'Stopped by you';
@@ -316,7 +443,7 @@ class _OrbitHomeState extends State<OrbitHome> {
   }
 
   Widget _activity() {
-    final visible = showEmpty ? <Map<String, String>>[] : tasks.where((task) {
+    final visible = showEmpty ? <Map<String, String>>[] : visibleTasks.where((task) {
       return switch (activityFilter) {
         'Running' => task['status'] == 'Running' || task['status'] == 'Queued',
         'Completed' => task['status'] == 'Completed',
@@ -377,9 +504,9 @@ class _OrbitHomeState extends State<OrbitHome> {
         style: TextStyle(color: muted),
       ),
       const SizedBox(height: 14),
-      if (showEmpty || !tasks.any((t) => t['evidence'] == 'true'))
+      if (showEmpty || !visibleTasks.any((t) => t['evidence'] == 'true'))
         _panel(const Text('No evidence yet. Evidence from task runs will appear here.', style: TextStyle(color: muted)))
-      else ...tasks
+      else ...visibleTasks
           .where((t) => t['evidence'] == 'true')
           .map(
             (t) => InkWell(
@@ -431,24 +558,19 @@ class _OrbitHomeState extends State<OrbitHome> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(online ? 'My Windows PC · online' : 'My Windows PC · offline'),
-            const SizedBox(height: 6),
-            const Text(
-              'Private demo connection',
-              style: TextStyle(color: muted, fontSize: 12),
-            ),
-            Wrap(
-              children: [
-                TextButton(
-                  onPressed: () => setState(() => online = true),
-                  child: const Text('Reconnect'),
-                ),
-                TextButton(
-                  onPressed: _disconnect,
-                  child: const Text('Disconnect'),
-                ),
-              ],
-            ),
+            Text(apiConnected ? (agentOnline ? 'Windows agent online' : 'Windows agent offline') : 'Not connected · using local mock data'),
+            const SizedBox(height: 9),
+            TextField(controller: backendController, autocorrect: false, decoration: const InputDecoration(labelText: 'Backend URL', hintText: 'http://192.168.1.20:8765')),
+            const SizedBox(height: 8),
+            TextField(controller: tokenController, autocorrect: false, obscureText: true, decoration: const InputDecoration(labelText: 'Mobile access token')),
+            const SizedBox(height: 4),
+            const Text('On a phone, use your PC’s private Wi-Fi address. The token stays in memory for this session.', style: TextStyle(color: muted, fontSize: 11)),
+            if (connectionError != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(connectionError!, style: const TextStyle(color: danger, fontSize: 11))),
+            Wrap(children: [
+              FilledButton(onPressed: _connectBackend, child: Text(apiConnected ? 'Reconnect' : 'Connect')),
+              const SizedBox(width: 8),
+              TextButton(onPressed: _disconnect, child: const Text('Disconnect')),
+            ]),
           ],
         ),
       ),
@@ -528,10 +650,25 @@ class _OrbitHomeState extends State<OrbitHome> {
         ],
       ),
     );
-    if (ok == true) setState(() => online = false);
+    if (ok == true) {
+      pollTimer?.cancel();
+      api?.close();
+      setState(() {
+        api = null;
+        apiConnected = false;
+        agentOnline = false;
+        online = false;
+        remoteTasks = [];
+        connectionError = null;
+      });
+    }
   }
 
   void _showTask(Map<String, String> task) {
+    final raw = task['raw'];
+    final events = raw == null
+        ? <dynamic>[]
+        : (jsonDecode(raw) as Map<String, dynamic>)['events'] as List<dynamic>? ?? <dynamic>[];
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -551,23 +688,50 @@ class _OrbitHomeState extends State<OrbitHome> {
               const SizedBox(height: 16),
               const Text('EVENT TIMELINE', style: TextStyle(color: muted, fontSize: 11, letterSpacing: 1)),
               const SizedBox(height: 8),
-              Text('✓ Task submitted · ${task['date']}'),
-              const SizedBox(height: 8),
-              const Text('✓ Permissions checked · Allowed demo action'),
-              const SizedBox(height: 8),
-              Text('• ${task['step']}'),
+              if (events.isNotEmpty)
+                ...events.map((event) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.circle, size: 8, color: mint),
+                    const SizedBox(width: 9),
+                    Expanded(child: Text('${event['message']}', style: const TextStyle(fontSize: 12))),
+                  ]),
+                ))
+              else ...[
+                Text('✓ Task submitted · ${task['date']}'),
+                const SizedBox(height: 8),
+                const Text('✓ Permissions checked · Allowed demo action'),
+                const SizedBox(height: 8),
+                Text('• ${task['step']}'),
+              ],
+              if (task['result']?.isNotEmpty == true)
+                Padding(padding: const EdgeInsets.only(top: 8), child: Text('Result · ${task['result']}', style: const TextStyle(color: mint, fontSize: 12))),
               if (task['evidence'] == 'true') ...[
                 const SizedBox(height: 16),
                 const Text('EVIDENCE', style: TextStyle(color: muted, fontSize: 11, letterSpacing: 1)),
                 const SizedBox(height: 8),
-                Container(
-                  height: 150,
-                  width: double.infinity,
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), gradient: const LinearGradient(colors: [Color(0xFF514A89), Color(0xFF244B54)])),
-                  child: const Center(child: Icon(Icons.image_outlined, size: 40)),
-                ),
+                if (apiConnected && task['evidenceId']?.isNotEmpty == true && api != null)
+                  FutureBuilder<Uint8List>(
+                    future: api!.evidence(task['evidenceId']!),
+                    builder: (context, snapshot) => Container(
+                      height: 190,
+                      width: double.infinity,
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), color: const Color(0xFF26344A)),
+                      clipBehavior: Clip.antiAlias,
+                      child: snapshot.hasData
+                          ? Image.memory(snapshot.data!, fit: BoxFit.cover)
+                          : Center(child: snapshot.hasError ? const Icon(Icons.broken_image_outlined, color: danger) : const CircularProgressIndicator()),
+                    ),
+                  )
+                else
+                  Container(
+                    height: 150,
+                    width: double.infinity,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), gradient: const LinearGradient(colors: [Color(0xFF514A89), Color(0xFF244B54)])),
+                    child: const Center(child: Icon(Icons.image_outlined, size: 40)),
+                  ),
                 const SizedBox(height: 5),
-                const Text('Mock screenshot preview', style: TextStyle(color: muted, fontSize: 11)),
+                Text(apiConnected ? 'Generated note preview' : 'Mock evidence preview', style: const TextStyle(color: muted, fontSize: 11)),
               ],
               const SizedBox(height: 22),
             ],
@@ -578,52 +742,31 @@ class _OrbitHomeState extends State<OrbitHome> {
   }
 
   Widget _task(Map<String, String> task) => _panel(
-        Material(
-          color: card,
-          borderRadius: BorderRadius.circular(12),
-          child: ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(
-        Icons.circle,
-        size: 12,
-        color: _statusColor(task['status']!),
-      ),
-      title: Text(
-        task['title']!,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        '${task['status']} · ${task['step']}\n${task['date']}',
-        style: const TextStyle(color: muted, height: 1.5, fontSize: 11),
-      ),
-      isThreeLine: true,
-      trailing: const Icon(Icons.chevron_right, color: muted),
-      onTap: () => showModalBottomSheet<void>(
-        context: context,
-        builder: (ctx) => Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                task['title']!,
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text('Timeline · Submitted ${task['date']}'),
-              const SizedBox(height: 8),
-              Text(task['step']!),
-              const SizedBox(height: 18),
-            ],
-          ),
+    Material(
+      color: card,
+      borderRadius: BorderRadius.circular(12),
+      child: Column(children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.circle, size: 12, color: _statusColor(task['status']!)),
+          title: Text(task['title']!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          subtitle: Text('${task['status']} · ${task['step']}\n${task['date']}', style: const TextStyle(color: muted, height: 1.5, fontSize: 11)),
+          isThreeLine: true,
+          trailing: const Icon(Icons.chevron_right, color: muted),
+          onTap: () => _showTask(task),
         ),
-      ),
+        if (task['status'] == 'Running' || task['status'] == 'Queued')
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: LinearProgressIndicator(
+              value: double.tryParse(task['progress'] ?? '') ?? 0.62,
+              minHeight: 4,
+              backgroundColor: const Color(0xFF303B50),
+              color: violet,
+            ),
           ),
-        ),
+      ]),
+    ),
   );
 
   Color _statusColor(String s) => switch (s) {

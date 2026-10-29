@@ -1,17 +1,25 @@
-# orbit_mobile
+# Orbit Mobile
 
-A new Flutter project.
+Flutter client for the Orbit Phase 2 personal-agent demo.
 
-## Getting Started
+## Run locally
 
-This project is a starting point for a Flutter application.
+```sh
+flutter pub get
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
+The app starts in demo mode. Open **Settings**, switch to **API connection**, enter the backend base URL and the mobile bearer token, then connect. The app stores the token in memory for the current run. For a phone on the same trusted Wi-Fi as the development PC, use the PC's private LAN IP and run the backend on `0.0.0.0`; allow the backend port only on the private network in Windows Firewall.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Phase 2 behavior
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- Activity refreshes task status from the backend and shows progress, task events, and available note-preview evidence.
+- The supported remote action is `Create note: <text>`. It writes one Markdown file under `agent/demo_folder`.
+- Other requests fail visibly. Stop prevents a queued note from being written.
+- Evidence is a generated note preview, not a desktop screenshot.
+
+The demo uses HTTP bearer authentication for a trusted LAN only. Do not expose its port to the internet or use real credentials. Phase 3 is expected to add secure pairing and transport.
+
+## Checks
+
+Run `flutter analyze` and `flutter test test` from this directory. The API client tests can also be run directly with `flutter test test/orbit_api_test.dart`.

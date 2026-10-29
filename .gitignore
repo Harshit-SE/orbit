@@ -6,6 +6,9 @@ build/
 .vscode/
 *.iml
 *.log
+__pycache__/
+*.py[cod]
+*.egg-info/
 backend/.env
 backend/.venv/
 backend/storage/*
@@ -15,3 +18,5 @@ agent/.venv/
 /mobile/evidence/
 /mobile/recordings/
 /agent/evidence/
+/agent/demo_folder/
+/agent/storage/

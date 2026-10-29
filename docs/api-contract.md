@@ -1,6 +1,6 @@
-# API contract (planned)
+# API contract
 
-No API is implemented in Phase 1. This document records the Phase 2 interface direction; payloads may evolve during implementation.
+Phase 2 implements the endpoints below. `/v1` HTTP requests require the mobile bearer token. The agent WebSocket requires a separate agent bearer token. `/health` exposes only service and agent presence.
 
 ## HTTP
 
@@ -9,13 +9,12 @@ No API is implemented in Phase 1. This document records the Phase 2 interface di
 - `GET /v1/tasks` — authenticated task history, newest first.
 - `GET /v1/tasks/{task_id}` — current status, named step, progress, timestamps, and evidence metadata.
 - `POST /v1/tasks/{task_id}/stop` — request cooperative cancellation.
-- `POST /v1/tasks/{task_id}/approvals/{approval_id}` — explicitly approve or decline a consequential step.
 - `GET /v1/evidence/{evidence_id}` — authenticated evidence retrieval after authorization checks.
 
 ## Live events
 
-An authenticated WebSocket at `/v1/events` emits versioned JSON events: `task.queued`, `task.started`, `task.progress`, `task.awaiting_approval`, `task.completed`, `task.failed`, `task.stopped`, and `agent.presence`. Events include `event_id`, `task_id` where applicable, `occurred_at`, and a typed payload. Clients reconnect and fetch task state to recover missed events.
+The agent connects outbound to `/v1/agent` with its dedicated bearer token and sends progress/completion messages. `/v1/events` emits `task.updated` objects to authenticated clients. The mobile demo currently polls task state each second and retrieves evidence by id.
 
-Statuses: `queued`, `running`, `waiting_approval`, `completed`, `failed`, `stopped`. Evidence metadata describes kind, capture time, duration, and authenticated retrieval id; it must not reveal local absolute paths.
+Statuses: `queued`, `running`, `waiting_approval`, `completed`, `failed`, `stopped`. The only Phase 2 supported request is `Create note: <text>`; unsupported requests are stored with a visible `failed` status. Evidence metadata describes kind, MIME type, capture time, and authenticated retrieval id; it never reveals local absolute paths.
 
 All endpoints require paired-device authentication. Never expose an unauthenticated public control endpoint. Validate task requests and enforce agent-side action and folder allowlists independently of client validation.

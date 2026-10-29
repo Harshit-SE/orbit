@@ -1,11 +1,12 @@
 # Orbit
 
-Orbit is a Flutter companion for a personal Windows agent. This repository currently contains the **Phase 1 mobile UI demo**. It uses local mock data and does not connect to or control a PC.
+Orbit is a Flutter companion for a personal Windows agent. This repository contains the **Phase 2 end-to-end personal demo**: Flutter mobile app, authenticated backend, and an allowlisted Windows note agent.
 
 ## Repository
 
-- `mobile/` — Flutter app, currently implemented as a dependency-light clickable prototype.
-- `backend/` and `agent/` — planned for Phase 2; not implemented yet.
+- `mobile/` — Flutter app with local mock data and an API-backed connection mode.
+- `backend/` — authenticated FastAPI service and SQLite task history.
+- `agent/` — Windows agent restricted to note creation in the approved demo folder.
 - `docs/` — architecture, API direction, roadmap, and safety model.
 
 ## Run the mobile demo
@@ -18,8 +19,8 @@ flutter pub get
 flutter run
 ```
 
-The app uses only local mock data. On Agent, submit a task with the composer or a quick suggestion. Use the bottom navigation to browse history, evidence previews, and settings. The Settings screen includes demo controls for loading/error states and PC connection.
+Without backend credentials, the app uses local mock data. To run end to end, start the backend and agent using their READMEs, then enter the backend URL and mobile token in Settings. Submit `Create note: text` from Agent. Review the safety notes before binding the backend to a LAN address.
 
 ## Phase status
 
-Phase 1 is implemented in `mobile/lib/main.dart`. Backend connectivity, real screenshots/recordings, notifications, secure pairing, and PC actions are not implemented. See [`docs/roadmap.md`](docs/roadmap.md) before starting the next phase.
+Phase 2 supports only note creation in a dedicated demo folder. Other requests fail with an unsupported-task message. Evidence is a generated note preview, not a capture of unrelated desktop content. Secure pairing and transport encryption remain Phase 3 work. See [`docs/roadmap.md`](docs/roadmap.md) and [`docs/safety-and-permissions.md`](docs/safety-and-permissions.md).

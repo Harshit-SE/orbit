@@ -86,13 +86,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create a weekly planning note'));
     await tester.pumpAndSettle();
-    expect(find.text('Mock screenshot preview'), findsOneWidget);
+    expect(find.text('Mock evidence preview'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Settings').last);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Show loading'));
+    await tester.scrollUntilVisible(find.text('Show loading'), 250, scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('Show loading'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Hide loading'), findsOneWidget);
@@ -100,7 +100,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     await tester.drag(find.byType(ListView).first, const Offset(0, 700));
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byKey(const ValueKey('demo-loading-indicator')), findsOneWidget);
   });
 
   testWidgets('disconnect requires confirmation and offline is visible', (tester) async {
@@ -115,7 +115,7 @@ void main() {
     expect(find.text('Disconnect this PC?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('PC online'), findsOneWidget);
+    expect(find.textContaining('Demo mode'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Disconnect').first);
     await tester.tap(find.text('Disconnect').first);

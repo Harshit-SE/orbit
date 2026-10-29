@@ -2,7 +2,7 @@
 
 ## Phase 1
 
-The Flutter app owns presentation and an in-memory mock task list. `mobile/lib/main.dart` contains the current prototype screens and mock interactions so the app runs without a service or secrets. Evidence cards are illustrative previews, not captured media.
+The Flutter app owns presentation and an in-memory mock fallback. It can connect to the Phase 2 API without changing the four screens.
 
 ## Intended end-to-end shape
 
@@ -12,6 +12,6 @@ Flutter phone ── authenticated private connection ── backend ── pers
                                                       └── task/event metadata               └── allowlisted actions
 ```
 
-The phone submits and observes tasks. The backend authenticates paired devices, validates requests, stores task metadata, and relays progress and approvals. The Windows agent accepts only backend-issued, validated task steps and executes its local allowlist. Evidence is stored privately and exposed as metadata plus authenticated retrieval, never as public paths.
+The phone submits and observes tasks over a bearer-authenticated API. The backend validates requests, stores task history and events in SQLite, and relays tasks over an authenticated outbound agent WebSocket. The Windows agent accepts only `Create note: <text>` and writes Markdown inside one configured demo folder. It creates a scoped note-preview PNG; it does not capture the rest of the desktop. Evidence stays in private backend storage and is retrieved by authenticated id.
 
-Phase 2 should keep API-backed repositories behind the current UI and use predictable demo tasks. Later phases can add durable history, retries, pairing, and configurable permissions without granting arbitrary shell access.
+The Phase 2 bearer-token HTTP demo is intended only for a trusted private network and is not suitable for public exposure. Phase 3 must add secure pairing and transport security. Later phases can add retries and configurable permissions without granting arbitrary shell access.
